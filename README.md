@@ -190,6 +190,10 @@ swift build
 ./package.sh pkg    # 打 PKG（安装到 /Applications）
 ```
 
+打包保留 `dist/AropytEditor.app` 的目录身份，并在退出时恢复打包前已指向 Aropyt 的 Markdown 默认关联（包括打包失败时）。签名 identifier 与固定 designated requirement 均从 `Info.plist` 的 bundle ID 派生。
+
+若之前的默认关联已经丢失，安装后在 Finder 中选中一个 `.md` 文件，打开“显示简介 → 打开方式”，选择 `/Applications/AropytEditor.app` 并点“全部更改”。后续打包会保留这一选择。
+
 ### 两种格式的区别
 
 | | DMG | PKG |
@@ -203,11 +207,11 @@ swift build
 1. **编译**：`swift build -c release`，产物在 `.build/release/`
 2. **组装 .app**：
    - `Contents/MacOS/AropytEditor` — 主二进制
-   - `Contents/Resources/AropytEditor_AropytEditor.bundle` — SPM 资源包（JS/CSS），代码通过 `Bundle.module` 定位
+   - `Contents/Resources/AropytEditor_AropytEditor.bundle` — SPM 资源包（本地化/JS/CSS/图标），代码通过 `AppResources` 定位
    - `Contents/Info.plist` — 从 `Sources/AropytEditor/Resources/Info.plist` 复制（bundle 模式由系统读；裸跑时靠 Mach-O `__TEXT,__info_plist` 段）
 3. **签名**：`codesign --deep --sign -`（ad-hoc），无需 Apple 开发者账号，但接收方首次打开需右键→打开绕过 Gatekeeper
 4. **打包**：
-   - DMG：用 `create-dmg` 生成，窗口 560×340，app 图标居左、Applications 快捷方式居右（拖拽安装布局）；需提前 `brew install create-dmg`
+   - DMG：用 `create-dmg --skip-jenkins` 生成，跳过 Finder 排版，打包时不弹出安装窗口；包含 app 和 Applications 拖拽入口；需提前 `brew install create-dmg`
    - PKG：用 `pkgbuild --root … --install-location /Applications` 生成安装包
 
 ### 正式分发
