@@ -116,7 +116,7 @@ final class AboutTabViewController: NSViewController {
             return image
         }
         if
-            let url = Bundle.module.url(forResource: "AropytEditor", withExtension: "icns"),
+            let url = AppResources.bundle.url(forResource: "AropytEditor", withExtension: "icns"),
             let image = NSImage(contentsOf: url)
         {
             return image

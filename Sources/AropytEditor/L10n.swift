@@ -59,17 +59,18 @@ enum L10n {
     }
 
     private static var localizationBundle: Bundle {
+        let resources = AppResources.bundle
         let language = currentLanguage
-        guard language != .system else { return .module }
+        guard language != .system else { return resources }
         for resourceName in [language.rawValue, language.rawValue.lowercased()] {
             if
-                let path = Bundle.module.path(forResource: resourceName, ofType: "lproj"),
+                let path = resources.path(forResource: resourceName, ofType: "lproj"),
                 let bundle = Bundle(path: path)
             {
                 return bundle
             }
         }
-        return .module
+        return resources
     }
 
     private static var formatLocale: Locale {

@@ -35,7 +35,7 @@ mkdir -p "$APP_BUNDLE/Contents/Resources"
 # 主二进制
 cp "$BUILD_DIR/$APP_NAME" "$APP_BUNDLE/Contents/MacOS/$APP_NAME"
 
-# SPM 资源包（JS / CSS）—— 代码通过 Bundle.module 定位
+# SPM 资源包（本地化 / JS / CSS / 图标）—— 代码通过 AppResources 定位
 cp -R "$BUILD_DIR/${APP_NAME}_${APP_NAME}.bundle" \
       "$APP_BUNDLE/Contents/Resources/"
 
