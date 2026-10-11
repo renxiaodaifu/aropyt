@@ -41,7 +41,7 @@ swift run AropytEditor
 - `Sources/AropytEditor/Window/EditorWindowController.swift`：窗口和 toolbar。用显式 `setup(document:)` 初始化，不依赖 `windowDidLoad`。
 - `Sources/AropytEditor/Window/MainViewController.swift`：源码 / 预览模式协调器。负责 child VC 切换、文档同步、全文查找栏、异步 preview flush、保存与自动保存前准备。
 - `Sources/AropytEditor/Window/FindBarView.swift`：源码 / 预览共用的悬浮查找 / 替换栏，以及全文查找和替换结果模型。
-- `Sources/AropytEditor/Window/SourceViewController.swift`：源码模式，TextKit 非连续布局、可见区优先和后台分批正则高亮。
+- `Sources/AropytEditor/Window/SourceViewController.swift`：源码模式，使用垂直 ruler 显示逻辑行号，并支持 TextKit 非连续布局、可见区优先和后台分批正则高亮。
 - `Sources/AropytEditor/Window/PreviewViewController.swift`：预览模式，`WKWebView` 渐进渲染、dirty / flush 状态、JS bridge、本地资源 scheme、链接和格式化命令。
 - `Sources/AropytEditor/ImagePaste/`：图片剪贴板解析与粘贴服务。负责识别文件 URL / 位图、按偏好决定原路径或复制目录、安全避免覆盖同名文件、生成并可选 URL 转义 Markdown image。
 - `Sources/AropytEditor/Workspace/`：打开目录工作区。`WorkspaceFileSystem` 负责过滤与真实磁盘操作，`WorkspaceTreeModel` 提供懒加载树，`WorkspaceSidebarViewController` 提供文件树和右键菜单，`WorkspaceContainerViewController` 提供左右 split view 与折叠动画。
@@ -101,6 +101,7 @@ swift run AropytEditor
 
 ### 源码模式
 
+- 源码行号通过 `NSScrollView` 的垂直 ruler 绘制，不写入 `NSTextStorage`；跟随滚动和编辑刷新，软换行只显示一次逻辑行号，位数增加时自动扩宽 gutter。绘制时必须显式裁剪到 ruler 的 `bounds`，AppKit 传入的 dirty rect 可能覆盖整个编辑区，直接填充会遮住正文；浅色 / 深色位图回归测试验证正文实际可见。
 - `NSTextView` 必须设置 `minSize`、`maxSize`、`isVerticallyResizable`、`isHorizontallyResizable`、`autoresizingMask`、`textContainer.widthTracksTextView`、`textContainer.containerSize`，否则可能空白。
 - 源码 `NSTextView` 与预览共用正文宽度规则：左右边距至少 36 pt，窗口较宽时正文最大 920 pt 并居中；`lineFragmentPadding` 为 0。这一边距属于源码视图自身，会按编辑区域宽度动态更新。
 - 源码段落样式使用 `lineHeightMultiple = 1.2` 增大段落内行距，不额外添加段前或段后间距；初始文本、局部重高亮和后续输入都保留该样式。
@@ -149,7 +150,7 @@ swift run AropytEditor
 已实现：
 
 - NSDocument 打开 / 新建 / 保存 Markdown。
-- 源码模式编辑和语法高亮。
+- 源码模式编辑、行号和语法高亮。
 - 源码模式 Cmd+Click 打开链接。
 - 预览模式 Markdown 渲染和代码高亮。
 - 预览模式数学公式渲染（KaTeX，本地离线资源）。

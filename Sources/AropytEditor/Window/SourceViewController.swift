@@ -13,6 +13,7 @@ final class SourceViewController: NSViewController, NSTextViewDelegate {
     /// 改用普通可选属性，loadView 中显式赋值。
     private var textView: NSTextView?
     private var scrollView: NSScrollView?
+    private var lineNumberRulerView: SourceLineNumberRulerView?
     private let highlighter = MarkdownHighlighter()
     private let highlightBatchSize = 64 * 1024
     private var highlightGeneration = 0
@@ -110,15 +111,22 @@ final class SourceViewController: NSViewController, NSTextViewDelegate {
         tv.delegate = self
 
         scroll.documentView = tv
+        let lineNumberRuler = SourceLineNumberRulerView(scrollView: scroll)
+        lineNumberRuler.clientView = tv
+        scroll.verticalRulerView = lineNumberRuler
+        scroll.hasVerticalRuler = true
+        scroll.rulersVisible = true
 
         self.textView = tv
         self.scrollView = scroll
+        self.lineNumberRulerView = lineNumberRuler
         self.view = scroll
     }
 
     override func viewDidLayout() {
         super.viewDidLayout()
         updateHorizontalTextInset()
+        lineNumberRulerView?.needsDisplay = true
     }
 
     var editorTextContainerInset: NSSize {
@@ -129,6 +137,18 @@ final class SourceViewController: NSViewController, NSTextViewDelegate {
     var editorLineFragmentPadding: CGFloat {
         _ = view
         return textView?.textContainer?.lineFragmentPadding ?? 0
+    }
+
+    var editorShowsLineNumbers: Bool {
+        _ = view
+        return scrollView?.hasVerticalRuler == true
+            && scrollView?.rulersVisible == true
+            && scrollView?.verticalRulerView != nil
+    }
+
+    var editorLineNumberRulerThickness: CGFloat {
+        _ = view
+        return lineNumberRulerView?.ruleThickness ?? 0
     }
 
     var editorParagraphLineHeightMultiple: CGFloat {
@@ -358,6 +378,7 @@ final class SourceViewController: NSViewController, NSTextViewDelegate {
         guard let storage = textView?.textStorage else { return }
         currentUTF8ByteCount = text.utf8.count
         currentLineBreakCount = Self.lineBreakCount(in: text)
+        lineNumberRulerView?.update(lineCount: text.isEmpty ? 1 : currentLineBreakCount + 1)
         usesProgressiveHighlighting = LongDocumentPolicy.isLongDocument(
             utf8ByteCount: currentUTF8ByteCount,
             lineCount: text.isEmpty ? 0 : currentLineBreakCount + 1
@@ -482,6 +503,9 @@ final class SourceViewController: NSViewController, NSTextViewDelegate {
         currentLineBreakCount = max(0, currentLineBreakCount + pendingLineBreakDelta)
         pendingUTF8ByteDelta = 0
         pendingLineBreakDelta = 0
+        lineNumberRulerView?.update(
+            lineCount: tv.string.isEmpty ? 1 : currentLineBreakCount + 1
+        )
         usesProgressiveHighlighting = LongDocumentPolicy.isLongDocument(
             utf8ByteCount: currentUTF8ByteCount,
             lineCount: tv.string.isEmpty ? 0 : currentLineBreakCount + 1
@@ -576,5 +600,259 @@ private final class ImagePasteTextView: NSTextView {
     override func paste(_ sender: Any?) {
         guard onPasteImage?() != true else { return }
         super.paste(sender)
+    }
+}
+
+/// A source-only gutter that renders logical Markdown line numbers without
+/// adding them to the text view's storage.
+private final class SourceLineNumberRulerView: NSRulerView {
+    private static let labelFont = NSFont.monospacedDigitSystemFont(
+        ofSize: NSFont.smallSystemFontSize,
+        weight: .regular
+    )
+    private static let minimumThickness: CGFloat = 38
+    private static let horizontalPadding: CGFloat = 8
+
+    private var lineCount = 1
+    private var boundsObserver: NSObjectProtocol?
+
+    init(scrollView: NSScrollView) {
+        super.init(scrollView: scrollView, orientation: .verticalRuler)
+        ruleThickness = Self.thickness(for: lineCount)
+        // NSRulerView is not guaranteed to invalidate itself when the clip
+        // view scrolls. Without an explicit invalidation AppKit may reuse the
+        // old ruler bitmap, leaving stale line numbers behind the newly
+        // exposed rows.
+        scrollView.contentView.postsBoundsChangedNotifications = true
+        boundsObserver = NotificationCenter.default.addObserver(
+            forName: NSView.boundsDidChangeNotification,
+            object: scrollView.contentView,
+            queue: .main
+        ) { [weak self] _ in
+            self?.needsDisplay = true
+        }
+    }
+
+    required init(coder: NSCoder) {
+        super.init(coder: coder)
+    }
+
+    deinit {
+        if let boundsObserver {
+            NotificationCenter.default.removeObserver(boundsObserver)
+        }
+    }
+
+    override var isFlipped: Bool { true }
+
+    func update(lineCount: Int) {
+        let newLineCount = max(1, lineCount)
+        self.lineCount = newLineCount
+        let newThickness = Self.thickness(for: newLineCount)
+        if ruleThickness != newThickness {
+            ruleThickness = newThickness
+            needsDisplay = true
+            enclosingScrollView?.tile()
+        } else {
+            needsDisplay = true
+        }
+    }
+
+    override func drawHashMarksAndLabels(in rect: NSRect) {
+        // AppKit can pass a dirty rect wider than the ruler without clipping
+        // drawing to its bounds. Keep the background from covering the editor.
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        NSBezierPath(rect: bounds).addClip()
+        NSColor.controlBackgroundColor.setFill()
+        // Clear the complete gutter on every pass. During a scroll AppKit can
+        // copy the previous backing-store contents and only expose a narrow
+        // dirty strip; clearing just `rect` then leaves old labels visible.
+        bounds.fill()
+
+        guard
+            let textView = clientView as? NSTextView,
+            let layoutManager = textView.layoutManager,
+            let textContainer = textView.textContainer,
+            let scrollView = textView.enclosingScrollView
+        else {
+            drawSeparator()
+            return
+        }
+
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: Self.labelFont,
+            .foregroundColor: NSColor.secondaryLabelColor
+        ]
+        let source = textView.string as NSString
+        let visibleRect = textView.convert(
+            scrollView.contentView.bounds,
+            from: scrollView.contentView
+        )
+        let containerRect = visibleRect.offsetBy(
+            dx: -textView.textContainerOrigin.x,
+            dy: -textView.textContainerOrigin.y
+        )
+        layoutManager.ensureLayout(forBoundingRect: containerRect, in: textContainer)
+        let glyphRange = layoutManager.glyphRange(
+            forBoundingRect: containerRect,
+            in: textContainer
+        )
+
+        var glyphIndex = glyphRange.location
+        let glyphEnd = NSMaxRange(glyphRange)
+        guard glyphIndex < glyphEnd else {
+            drawExtraLineNumberIfNeeded(
+                textView: textView,
+                layoutManager: layoutManager,
+                source: source,
+                attributes: attributes,
+                visibleRect: visibleRect
+            )
+            drawSeparator()
+            return
+        }
+
+        var characterIndex = layoutManager.characterIndexForGlyph(at: glyphIndex)
+        var lineNumber = lineNumber(before: characterIndex, in: source)
+        while glyphIndex < glyphEnd {
+            var effectiveGlyphRange = NSRange(location: 0, length: 0)
+            let lineRect = layoutManager.lineFragmentUsedRect(
+                forGlyphAt: glyphIndex,
+                effectiveRange: &effectiveGlyphRange
+            )
+            guard effectiveGlyphRange.length > 0 else { break }
+
+            let characterRange = layoutManager.characterRange(
+                forGlyphRange: effectiveGlyphRange,
+                actualGlyphRange: nil
+            )
+            characterIndex = characterRange.location
+            let startsLogicalLine = characterIndex == 0
+                || isLineBreak(source.character(at: characterIndex - 1))
+            if startsLogicalLine {
+                drawLineNumber(
+                    lineNumber,
+                    in: lineRect,
+                    textView: textView,
+                    attributes: attributes
+                )
+            }
+
+            lineNumber += lineBreakCount(in: source, range: characterRange)
+            let nextGlyphIndex = NSMaxRange(effectiveGlyphRange)
+            guard nextGlyphIndex > glyphIndex else { break }
+            glyphIndex = nextGlyphIndex
+        }
+
+        drawExtraLineNumberIfNeeded(
+            textView: textView,
+            layoutManager: layoutManager,
+            source: source,
+            attributes: attributes,
+            visibleRect: visibleRect
+        )
+        drawSeparator()
+    }
+
+    private static func thickness(for lineCount: Int) -> CGFloat {
+        let digits = max(1, String(lineCount).count)
+        let sample = String(repeating: "8", count: digits) as NSString
+        let width = sample.size(withAttributes: [.font: labelFont]).width
+        return max(minimumThickness, ceil(width) + horizontalPadding * 2)
+    }
+
+    private func drawLineNumber(
+        _ number: Int,
+        in lineRect: NSRect,
+        textView: NSTextView,
+        attributes: [NSAttributedString.Key: Any]
+    ) {
+        let label = String(number) as NSString
+        let labelSize = label.size(withAttributes: attributes)
+        let x = bounds.width - labelSize.width - Self.horizontalPadding
+        // TextKit returns document coordinates. Convert them to the fixed
+        // ruler so labels follow the viewport when the text view scrolls.
+        let rulerRect = convert(
+            lineRect.offsetBy(dx: textView.textContainerOrigin.x, dy: textView.textContainerOrigin.y),
+            from: textView
+        )
+        let y = rulerRect.minY + max(0, (rulerRect.height - labelSize.height) / 2)
+        label.draw(at: NSPoint(x: x, y: y), withAttributes: attributes)
+    }
+
+    private func drawExtraLineNumberIfNeeded(
+        textView: NSTextView,
+        layoutManager: NSLayoutManager,
+        source: NSString,
+        attributes: [NSAttributedString.Key: Any],
+        visibleRect: NSRect
+    ) {
+        guard source.length == 0 || isLineBreak(source.character(at: source.length - 1)) else {
+            return
+        }
+        let measuredLineRect = layoutManager.extraLineFragmentRect
+        let extraLineRect = measuredLineRect.height > 0
+            ? measuredLineRect
+            : NSRect(
+                x: 0,
+                y: 0,
+                width: textView.bounds.width,
+                height: textView.font.map {
+                    max(1, $0.ascender - $0.descender + $0.leading)
+                } ?? NSFont.systemFontSize
+            )
+        let y = extraLineRect.minY + textView.textContainerOrigin.y
+        guard y + extraLineRect.height >= visibleRect.minY,
+              y <= NSMaxY(visibleRect) else {
+            return
+        }
+        drawLineNumber(
+            lineNumber(before: source.length, in: source),
+            in: extraLineRect,
+            textView: textView,
+            attributes: attributes
+        )
+    }
+
+    private func drawSeparator() {
+        NSColor.separatorColor.setStroke()
+        let path = NSBezierPath()
+        path.move(to: NSPoint(x: bounds.maxX - 0.5, y: bounds.minY))
+        path.line(to: NSPoint(x: bounds.maxX - 0.5, y: bounds.maxY))
+        path.lineWidth = 1
+        path.stroke()
+    }
+
+    private func lineNumber(before location: Int, in source: NSString) -> Int {
+        1 + lineBreakCount(
+            in: source,
+            range: NSRange(location: 0, length: min(max(0, location), source.length))
+        )
+    }
+
+    private func lineBreakCount(in source: NSString, range: NSRange) -> Int {
+        guard range.length > 0 else { return 0 }
+        let end = min(source.length, NSMaxRange(range))
+        var count = 0
+        var previousWasCarriageReturn = range.location > 0
+            && source.character(at: range.location - 1) == 13
+        for index in range.location..<end {
+            let character = source.character(at: index)
+            if character == 13 {
+                count += 1
+                previousWasCarriageReturn = true
+            } else {
+                if character == 10, !previousWasCarriageReturn {
+                    count += 1
+                }
+                previousWasCarriageReturn = false
+            }
+        }
+        return count
+    }
+
+    private func isLineBreak(_ character: unichar) -> Bool {
+        character == 10 || character == 13
     }
 }

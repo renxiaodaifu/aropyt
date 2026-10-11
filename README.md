@@ -8,7 +8,7 @@ macOS 上的本地 Markdown 编辑器，使用 Swift + AppKit 开发，纯 Swift
 
 -   打开 / 新建 / 保存 `.md` 文件（NSDocument）
 -   打开目录工作区：左侧按层展开且仅显示 `.md` 的文件树；支持同窗切换、侧边栏收起/展开，以及新建、重命名、确认删除、刷新、访达显示和复制路径
--   **源码模式**：基于 `NSTextView`，带正则语法高亮
+-   **源码模式**：基于 `NSTextView`，带行号和正则语法高亮
 -   **预览模式**：基于 `WKWebView` + 本地 `marked.js` + `highlight.js`，支持完整 CommonMark/GFM
     -   粗体、斜体、删除线、列表、标题、代码块（带语法高亮；行号与自动换行可配置）、表格、图片、链接、引用块、HR 等
     -   数学公式：默认支持 `$...$`、`$$...$$`；可在“设置 → 语法偏好”启用 `\\(...\\)`、`\\[...\\]` 和 `math` fenced code block，基于本地 KaTeX 离线渲染
@@ -63,7 +63,7 @@ macOS 上的本地 Markdown 编辑器，使用 Swift + AppKit 开发，纯 Swift
 | --- | --- |
 | `EditorWindowController.swift` | NSWindowController。在 `convenience init()` 里创建窗口对象，**不依赖 `windowDidLoad`**（用 `init(window:)` 时不会触发）；通过显式 `setup(document:)` 由 document 调用，绑定 contentViewController、安装 toolbar。同时实现 `NSToolbarDelegate` 提供"切换源码/预览"toolbar 按钮。**改窗口尺寸、标题、toolbar 内容时改这里。** |
 | `MainViewController.swift` | 模式协调器。持有 `document` 引用、`sourceVC` 实例、懒加载的 `previewVC`，维护当前 `mode`。`toggleMode(_:)` 是切换入口（菜单和 toolbar 都连到这里）；切换时移除旧子 VC、嵌入新子 VC，并把最新文本同步到对方。监听 `markdownDocumentTextChanged` 通知实现外部变更同步。**改源码/预览之间的同步逻辑、模式切换行为时改这里。** |
-| `SourceViewController.swift` | 源码模式 ViewController。在 `loadView()` 里手动构造 `NSScrollView` + `NSTextView`（必须设 `minSize/maxSize/isVerticallyResizable/textContainer` 等，否则可能空白），关闭所有自动替换/拼写检查/链接检测/富文本，使用等宽字体。`textDidChange` 回调把文本传给 `onTextChanged`，并调 `applyHighlighting()` 重新染色。**改编辑器字体、颜色、行为（如缩进、wrapping）时改这里。** |
+| `SourceViewController.swift` | 源码模式 ViewController。在 `loadView()` 里手动构造 `NSScrollView` + `NSTextView`（必须设 `minSize/maxSize/isVerticallyResizable/textContainer` 等，否则可能空白），通过垂直 ruler 绘制随滚动和文本变化同步的逻辑行号，关闭所有自动替换/拼写检查/链接检测/富文本，并使用等宽字体。`textDidChange` 回调把文本传给 `onTextChanged`，并调 `applyHighlighting()` 重新染色。**改编辑器字体、颜色、行为（如缩进、wrapping）时改这里。** |
 | `PreviewViewController.swift` | 预览模式 ViewController。**懒加载 `webView`**：`load(markdown:)` 入口必须先 `_ = self.view` 触发 `loadView()` 才能访问 `webView`。`renderInternal` 调 `MarkdownRenderer.htmlDocument(for:)` 拿到 HTML，然后 `loadHTMLString(_:baseURL:)`（baseURL 指向 `Bundle.module.resourceURL`，让相对路径资源生效）。`WKNavigationDelegate` 拦截 `linkActivated`，用 `NSWorkspace.shared.open` 在系统浏览器打开。**改预览的 WebView 配置、链接打开行为时改这里。** |
 
 ### `Sources/AropytEditor/Workspace/`
