@@ -51,6 +51,7 @@ swift run AropytEditor
 - `Sources/AropytEditor/Resources/`：`marked.umd.js`、`highlight.min.js`、`katex.min.js`、`auto-render.min.js`、`katex.min.css`、`fonts/` KaTeX woff2 字体、`mermaid.min.js`、`turndown.js`、`turndown-plugin-gfm.js`、GitHub CSS 主题、`Info.plist`。
 - `package.sh`：release build、组装 `.app`、ad-hoc 签名、生成 DMG/PKG。
 - `Scripts/PreserveMarkdownDefault.swift`：打包前记录已有 Aropyt Markdown 默认关联，退出时通过 Launch Services 恢复；不修改原本指向其他应用的关联。
+- `Scripts/dmg-layout.dsstore`：内置 Finder 布局，窗口 560×340、图标 100 pt、app 位于 (140, 170)、Applications 位于 (420, 170)；由 `Scripts/generate_dmg_layout.py` 使用仅维护时需要的 `ds_store` 生成。
 - `README.md`：功能、目录、构建、打包说明。
 - `ARCHITECTURE.md`：架构设计、数据流、关键决策。
 - `PROMPT.md`：原始需求。
@@ -176,7 +177,7 @@ swift run AropytEditor
 - File → 重新加载（Cmd+L）从磁盘刷新当前文档；存在未保存源码修改或未 flush 的预览修改时拒绝执行。
 - File → 打开目录：左侧懒加载 `.md` 文件树、同窗文件切换、标题栏侧边栏按钮，以及分组右键菜单（新窗口打开、新建、重命名、确认删除、刷新、访达显示、复制路径）。
 - Cmd+V 图片粘贴：默认使用本地图片原路径且不复制，也可复制到当前目录或可配置资源目录；支持源码 / 预览模式、同名保护和图片 URL 自动转义。
-- 打包脚本 `package.sh`，可生成 `.app` 和 DMG/PKG；DMG 使用 `create-dmg --skip-jenkins` 跳过 Finder 排版，保留 app 与 Applications 拖拽入口。
+- 打包脚本 `package.sh`，可生成 `.app` 和 DMG/PKG；DMG 复制内置 `.DS_Store` 保留 560×340 的安装窗口及图标位置，使用系统 `hdiutil create` 生成映像，打包时不打开 Finder。
 - 打包时保留 `dist/AropytEditor.app` 的目录身份；临时 app 与安装包使用独立临时目录，成功或失败退出时清理并恢复原有 Aropyt Markdown 默认关联；固定签名 identifier / designated requirement 从 `Info.plist` 的 bundle ID 派生。
 
 待实现 / 待完善：

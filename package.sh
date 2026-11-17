@@ -89,17 +89,22 @@ if [[ "$MODE" == "dmg" ]]; then
     OUTPUT="$DIST_DIR/$DISPLAY_NAME-$VERSION.dmg"
     echo "==> [4/4] 打 DMG → $OUTPUT"
 
-    # 保留拖拽安装入口，跳过需要打开 Finder 的窗口和图标排版。
+    # 预先写入 Finder 布局，由 hdiutil 直接生成映像，全程无需 Finder。
     DMG_SRC="$WORK_DIR/dmg"
     mkdir -p "$DMG_SRC"
     cp -R "$APP_BUNDLE" "$DMG_SRC/"
     ln -s /Applications "$DMG_SRC/Applications"
+    cp "$SCRIPT_DIR/Scripts/dmg-layout.dsstore" "$DMG_SRC/.DS_Store"
 
-    create-dmg \
-        --skip-jenkins \
-        --volname "$DISPLAY_NAME $VERSION" \
-        "$WORK_DIR/$DISPLAY_NAME-$VERSION.dmg" \
-        "$DMG_SRC"
+    hdiutil create \
+        -volname "$DISPLAY_NAME $VERSION" \
+        -srcfolder "$DMG_SRC" \
+        -fs HFS+ -format UDZO -imagekey zlib-level=9 \
+        "$WORK_DIR/$DISPLAY_NAME-$VERSION.dmg" > "$WORK_DIR/hdiutil.log" 2>&1 || {
+            dmg_result=$?
+            cat "$WORK_DIR/hdiutil.log" >&2
+            exit "$dmg_result"
+        }
     mv -f "$WORK_DIR/$DISPLAY_NAME-$VERSION.dmg" "$OUTPUT"
 
 elif [[ "$MODE" == "pkg" ]]; then

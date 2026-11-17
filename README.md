@@ -211,8 +211,10 @@ swift build
    - `Contents/Info.plist` — 从 `Sources/AropytEditor/Resources/Info.plist` 复制（bundle 模式由系统读；裸跑时靠 Mach-O `__TEXT,__info_plist` 段）
 3. **签名**：`codesign --deep --sign -`（ad-hoc），无需 Apple 开发者账号，但接收方首次打开需右键→打开绕过 Gatekeeper
 4. **打包**：
-   - DMG：用 `create-dmg --skip-jenkins` 生成，跳过 Finder 排版，打包时不弹出安装窗口；包含 app 和 Applications 拖拽入口；需提前 `brew install create-dmg`
+   - DMG：用系统自带 `hdiutil` 生成，通过内置 `.DS_Store` 保留 560×340 窗口、100 pt 图标及左右拖拽安装布局，打包过程不打开 Finder
    - PKG：用 `pkgbuild --root … --install-location /Applications` 生成安装包
+
+DMG 布局模板为 `Scripts/dmg-layout.dsstore`。日常打包直接复制，无额外 Python 依赖；修改布局时，可在安装 `ds_store==1.3.3` 的 Python 环境运行 `Scripts/generate_dmg_layout.py` 重新生成。
 
 ### 正式分发
 
